@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: football_betting_db
+    environment:
+      POSTGRES_DB: football_betting
+      POSTGRES_USER: betting_user
+      POSTGRES_PASSWORD: betting_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - betting_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: football_betting_cache
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - betting_network
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: football_betting_api
+    command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: football_betting
+      POSTGRES_USER: betting_user
+      POSTGRES_PASSWORD: betting_pass
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    volumes:
+      - ../src:/app/src
+      - ../data:/app/data
+    networks:
+      - betting_network
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: football_betting_frontend
+    command: streamlit run frontend/app.py --server.port 8501 --server.address 0.0.0.0
+    ports:
+      - "8501:8501"
+    depends_on:
+      - api
+    volumes:
+      - ../frontend:/app/frontend
+      - ../src:/app/src
+    networks:
+      - betting_network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  betting_network:
+    driver: bridge
