@@ -12,9 +12,12 @@ class BetfairAPIConsumer:
     
     def __init__(self, api_key: str):
         self.api_key = api_key
+        # IMPORTANTE: RapidAPI requiere estos headers exactos
         self.headers = {
             'x-rapidapi-key': api_key,
-            'x-rapidapi-host': 'betfair-sports-data-fast-and-reliable.p.rapidapi.com'
+            'x-rapidapi-host': 'betfair-sports-data-fast-and-reliable.p.rapidapi.com',
+            'Accept': 'application/json',  # Este header es OBLIGATORIO
+            'User-Agent': 'Mozilla/5.0'
         }
         self._cache = {}
     
@@ -22,10 +25,24 @@ class BetfairAPIConsumer:
         """Hacer petición a la API con manejo de errores"""
         try:
             url = f"{self.BASE_URL}/{endpoint}"
+            
+            print(f"🔍 Llamando: {url}")
+            print(f"🔑 Headers: {self.headers}")
+            print(f"📊 Params: {params}")
+            
             response = requests.get(url, headers=self.headers, params=params, timeout=15)
+            
+            print(f"📡 Status: {response.status_code}")
             
             if response.status_code == 200:
                 return response.json()
+            elif response.status_code == 403:
+                print(f"❌ Error 403: {response.text}")
+                print("⚠️ Verifica:")
+                print("  1. Tu API key está correcta en .env")
+                print("  2. Estás suscrito a la API en RapidAPI")
+                print("  3. No has excedido tu cuota")
+                return None
             elif response.status_code == 429:
                 print(f"⚠️ Rate limit alcanzado, esperando 60s...")
                 time.sleep(60)
@@ -42,16 +59,7 @@ class BetfairAPIConsumer:
         Obtener todas las competiciones de fútbol
         
         Returns:
-            List[Dict]: Lista de competiciones con estructura:
-            [
-                {
-                    'id': '228',
-                    'name': 'UEFA Champions League',
-                    'region': 'International',
-                    'market_count': 1016
-                },
-                ...
-            ]
+            List[Dict]: Lista de competiciones
         """
         data = self._make_request('getCompetitions', {'id': self.SPORT_ID_SOCCER})
         
@@ -72,32 +80,11 @@ class BetfairAPIConsumer:
                 print(f"⚠️ Error parseando competición: {str(e)}")
                 continue
         
-        # Cachear para no pedir constantemente
         self._cache['competitions'] = competitions
         return competitions
     
     def get_events(self, competition_id: str) -> List[Dict]:
-        """
-        Obtener eventos (partidos) de una competición
-        
-        Args:
-            competition_id: ID de la competición
-        
-        Returns:
-            List[Dict]: Lista de eventos con estructura:
-            [
-                {
-                    'event_id': '35036679',
-                    'name': 'Huachipato v Deportes Limache',
-                    'home_team': 'Huachipato',
-                    'away_team': 'Deportes Limache',
-                    'timezone': 'GMT',
-                    'start_time': '2025-12-10T23:00:00Z',
-                    'competition_id': '961354'
-                },
-                ...
-            ]
-        """
+        """Obtener eventos (partidos) de una competición"""
         data = self._make_request('getevents', {
             'sid': competition_id,
             'sportid': self.SPORT_ID_SOCCER
@@ -112,7 +99,6 @@ class BetfairAPIConsumer:
                 event_info = event_data['event']
                 name = event_info['name']
                 
-                # Parsear equipos del nombre (formato: "Team1 v Team2")
                 teams = name.split(' v ')
                 home_team = teams[0].strip() if len(teams) > 0 else ''
                 away_team = teams[1].strip() if len(teams) > 1 else ''
@@ -134,25 +120,7 @@ class BetfairAPIConsumer:
         return events
     
     def get_markets_list(self, event_id: str) -> List[Dict]:
-        """
-        Obtener lista de mercados (tipos de apuesta) de un evento
-        
-        Args:
-            event_id: ID del evento
-        
-        Returns:
-            List[Dict]: Lista de mercados con estructura:
-            [
-                {
-                    'market_id': '1.251405354',
-                    'market_name': 'Match Odds',
-                    'start_time': '2025-12-10T23:00:00Z',
-                    'total_matched': 0,
-                    'runners': [...]
-                },
-                ...
-            ]
-        """
+        """Obtener lista de mercados de un evento"""
         data = self._make_request('geMarketsList', {'EventID': event_id})
         
         if not data:
@@ -176,22 +144,7 @@ class BetfairAPIConsumer:
         return markets
     
     def get_market_odds(self, market_id: str) -> Optional[Dict]:
-        """
-        Obtener cuotas de un mercado específico
-        
-        Args:
-            market_id: ID del mercado
-        
-        Returns:
-            Dict: Datos del mercado con odds:
-            {
-                'market_id': '1.251405354',
-                'status': 'OPEN',
-                'inplay': False,
-                'total_matched': 1029.45,
-                'runners': [...]
-            }
-        """
+        """Obtener cuotas de un mercado específico"""
         data = self._make_request('GetMarketOdds', {'market_id': market_id})
         
         if not data or len(data) == 0:
@@ -212,31 +165,11 @@ class BetfairAPIConsumer:
             return None
     
     def get_match_predictions(self, event_id: str) -> Optional[Dict]:
-        """
-        Obtener predicciones pre-match calculadas desde las odds
-        
-        Args:
-            event_id: ID del evento
-        
-        Returns:
-            Dict: Predicciones con estructura:
-            {
-                'prob_home': 0.55,
-                'prob_draw': 0.28,
-                'prob_away': 0.17,
-                'prob_over_2_5': 0.52,
-                'prob_under_2_5': 0.48,
-                'confidence': 0.75,
-                'source': 'betfair',
-                'odds': {...}
-            }
-        """
-        # 1. Obtener mercados del evento
+        """Obtener predicciones pre-match desde las odds"""
         markets = self.get_markets_list(event_id)
         if not markets:
             return None
         
-        # 2. Encontrar mercados relevantes
         match_odds_market = None
         over_under_market = None
         
@@ -249,15 +182,12 @@ class BetfairAPIConsumer:
         if not match_odds_market:
             return None
         
-        # 3. Obtener odds del mercado Match Odds
         match_odds = self.get_market_odds(match_odds_market['market_id'])
         if not match_odds:
             return None
         
-        # 4. Calcular probabilidades desde odds
         probs = self._calculate_probabilities_from_odds(match_odds)
         
-        # 5. Obtener Over/Under si existe
         if over_under_market:
             ou_odds = self.get_market_odds(over_under_market['market_id'])
             if ou_odds:
@@ -269,25 +199,15 @@ class BetfairAPIConsumer:
         return probs
     
     def _calculate_probabilities_from_odds(self, market_odds: Dict) -> Dict:
-        """
-        Calcular probabilidades desde las odds de Betfair
-        
-        En Betfair:
-        - availableToBack = odds que puedes apostar A FAVOR (back)
-        - availableToLay = odds que puedes apostar EN CONTRA (lay)
-        
-        Usamos el mejor precio disponible (precio más alto en back)
-        """
+        """Calcular probabilidades desde odds de Betfair"""
         runners = market_odds['runners']
         
-        # Mapear runners por selectionId típicos
         home_runner = None
         draw_runner = None
         away_runner = None
         
         for runner in runners:
             selection_id = runner['selectionId']
-            # El draw suele tener selectionId 58805
             if selection_id == 58805:
                 draw_runner = runner
             elif home_runner is None:
@@ -295,40 +215,35 @@ class BetfairAPIConsumer:
             else:
                 away_runner = runner
         
-        # Extraer mejores odds de back
         def get_best_back_price(runner):
             if not runner or 'ex' not in runner:
                 return None
             available = runner['ex'].get('availableToBack', [])
             if not available:
                 return None
-            return available[0]['price']  # Primera es la mejor
+            return available[0]['price']
         
         home_odds = get_best_back_price(home_runner)
         draw_odds = get_best_back_price(draw_runner)
         away_odds = get_best_back_price(away_runner)
         
-        # Convertir odds a probabilidades implícitas
-        # Prob = 1 / odds
         def odds_to_prob(odds):
             if not odds or odds <= 1:
-                return 0.33  # Fallback
+                return 0.33
             return 1.0 / odds
         
         prob_home = odds_to_prob(home_odds)
         prob_draw = odds_to_prob(draw_odds)
         prob_away = odds_to_prob(away_odds)
         
-        # Normalizar para que sumen 1.0 (eliminar overround)
         total = prob_home + prob_draw + prob_away
         if total > 0:
             prob_home /= total
             prob_draw /= total
             prob_away /= total
         
-        # Calcular confianza basada en liquidez
         total_matched = market_odds.get('total_matched', 0)
-        confidence = min(0.95, 0.5 + (total_matched / 10000) * 0.45)  # Más liquidez = más confianza
+        confidence = min(0.95, 0.5 + (total_matched / 10000) * 0.45)
         
         return {
             'prob_home': round(prob_home, 3),
@@ -376,7 +291,6 @@ class BetfairAPIConsumer:
         prob_over = odds_to_prob(over_odds)
         prob_under = odds_to_prob(under_odds)
         
-        # Normalizar
         total = prob_over + prob_under
         if total > 0:
             prob_over /= total
@@ -386,50 +300,6 @@ class BetfairAPIConsumer:
             'prob_over_2_5': round(prob_over, 3),
             'prob_under_2_5': round(prob_under, 3)
         }
-    
-    def get_live_matches(self, competition_ids: Optional[List[str]] = None) -> List[Dict]:
-        """
-        Obtener partidos en vivo
-        
-        Args:
-            competition_ids: Lista de IDs de competiciones a monitorear
-                           Si None, usa las principales de Europa
-        
-        Returns:
-            List[Dict]: Partidos en vivo
-        """
-        if competition_ids is None:
-            # IDs de ligas principales (Champions, Premier, La Liga, etc.)
-            competition_ids = ['228', '10932509', '117', '59', '81', '55']
-        
-        live_matches = []
-        
-        for comp_id in competition_ids:
-            events = self.get_events(comp_id)
-            
-            for event in events:
-                # Verificar si está en vivo
-                markets = self.get_markets_list(event['event_id'])
-                
-                for market in markets:
-                    if market['market_name'] == 'Match Odds':
-                        odds = self.get_market_odds(market['market_id'])
-                        
-                        if odds and odds.get('inplay', False):
-                            # Partido en vivo
-                            match = {
-                                'match_id': event['event_id'],
-                                'home_team': event['home_team'],
-                                'away_team': event['away_team'],
-                                'league': comp_id,
-                                'status': 'LIVE',
-                                'inplay': True,
-                                'total_matched': odds.get('total_matched', 0)
-                            }
-                            live_matches.append(match)
-                            break
-        
-        return live_matches
 
 
 class MockBetfairAPI(BetfairAPIConsumer):
