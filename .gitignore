@@ -63,14 +63,19 @@ logs/
 .dmypy.json
 dmypy.json
 
-# Models (si son muy grandes)
-# data/models/*.pkl
-# data/models/*.h5
-
-# Data (opcional, descomentar si no quieres versionar datos)
-# data/raw/
-# data/processed/
-
 # OS
 Thumbs.db
 .DS_Store
+
+# Folders not used in MVP
+data/models/
+data/raw/
+data/processed/
+docker/
+notebooks/
+tests/
+frontend/
+scripts/
+
+# Helper flag
+.dependencies_installed
