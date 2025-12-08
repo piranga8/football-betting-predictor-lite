@@ -25,13 +25,10 @@ PIPFILE.lock
 
 # Virtual Environment
 venv/
-ENV/
 env/
-.venv
-
-# Environment Variables
-.env
-.env.local
+ENV/
+env.bak/
+venv.bak/
 
 # IDE
 .vscode/
@@ -39,32 +36,41 @@ env/
 *.swp
 *.swo
 *~
+.DS_Store
 
-# Data
-data/raw/*
-data/processed/*
-!data/raw/.gitkeep
-!data/processed/.gitkeep
+# Jupyter Notebook
+.ipynb_checkpoints
 
-# Models
-data/models/*.pkl
-data/models/*.joblib
-!data/models/.gitkeep
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+data/predictions.db
 
 # Logs
-logs/
 *.log
+logs/
 
-# Jupyter
-.ipynb_checkpoints/
-*.ipynb
+# Cache
+.cache/
+.pytest_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Models (si son muy grandes)
+# data/models/*.pkl
+# data/models/*.h5
+
+# Data (opcional, descomentar si no quieres versionar datos)
+# data/raw/
+# data/processed/
 
 # OS
-.DS_Store
 Thumbs.db
-
-# PostgreSQL
-postgresql/
-
-# Redis
-redis-data/
+.DS_Store
