@@ -1,7 +1,7 @@
 """Gestión de base de datos SQLite para almacenamiento temporal"""
 import sqlite3
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 from pathlib import Path
 
@@ -17,6 +17,17 @@ class Database:
         """Crear tablas si no existen"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
+        
+        # Tabla de competiciones (cache)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS competitions (
+                competition_id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                region TEXT,
+                market_count INTEGER,
+                last_update TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
         
         # Tabla de partidos en vivo
         cursor.execute('''
@@ -68,6 +79,96 @@ class Database:
         
         conn.commit()
         conn.close()
+    
+    # ==========================================
+    # Métodos de Competiciones (Cache)
+    # ==========================================
+    
+    def save_competitions(self, competitions: List[Dict]):
+        """
+        Guardar o actualizar competiciones en cache
+        
+        Args:
+            competitions: Lista de competiciones desde la API
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        for comp in competitions:
+            cursor.execute('''
+                INSERT OR REPLACE INTO competitions 
+                (competition_id, name, region, market_count, last_update)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (
+                comp['id'],
+                comp['name'],
+                comp.get('region', ''),
+                comp.get('market_count', 0),
+                datetime.now().isoformat()
+            ))
+        
+        conn.commit()
+        conn.close()
+    
+    def get_cached_competitions(self, max_age_hours: int = 24) -> Optional[List[Dict]]:
+        """
+        Obtener competiciones desde cache si son suficientemente recientes
+        
+        Args:
+            max_age_hours: Edad máxima del cache en horas
+        
+        Returns:
+            Lista de competiciones o None si el cache está vencido
+        """
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        # Verificar si hay datos recientes
+        cursor.execute('''
+            SELECT COUNT(*) as count, MAX(datetime(last_update)) as latest
+            FROM competitions
+        ''')
+        
+        result = cursor.fetchone()
+        
+        if result['count'] == 0:
+            conn.close()
+            return None
+        
+        latest_update = datetime.fromisoformat(result['latest'])
+        age = datetime.now() - latest_update
+        
+        # Si el cache es muy viejo, retornar None
+        if age > timedelta(hours=max_age_hours):
+            conn.close()
+            return None
+        
+        # Obtener competiciones del cache
+        cursor.execute('SELECT * FROM competitions ORDER BY market_count DESC')
+        competitions = [dict(row) for row in cursor.fetchall()]
+        
+        conn.close()
+        
+        # Convertir al formato esperado
+        return [{
+            'id': comp['competition_id'],
+            'name': comp['name'],
+            'region': comp['region'],
+            'market_count': comp['market_count']
+        } for comp in competitions]
+    
+    def clear_competitions_cache(self):
+        """Limpiar cache de competiciones"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM competitions')
+        conn.commit()
+        conn.close()
+    
+    # ==========================================
+    # Métodos de Partidos (Existentes)
+    # ==========================================
     
     def save_live_match(self, match_data: Dict):
         """Guardar o actualizar partido en vivo"""
