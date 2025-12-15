@@ -1,16 +1,11 @@
-"""Dashboard principal de predicciones en vivo"""
+"""Dashboard de partidos en vivo"""
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
 from datetime import datetime
 import time
-import os
 
-# Importar módulos propios
 from config import config
-from src.data.database import db
-from src.data.api_consumer import BetfairAPIConsumer, MockBetfairAPI
-from src.models.inplay_predictor import predictor
+from src.data.api_consumer import FootballAPI7Consumer
 
 # Configuración de la página
 st.set_page_config(
@@ -20,33 +15,23 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# CSS personalizado para semáforo
+# CSS personalizado
 st.markdown("""
 <style>
-.green-signal {
-    background-color: #28a745;
+.live-badge {
+    background-color: #ff4444;
     color: white;
-    padding: 10px;
-    border-radius: 5px;
-    text-align: center;
+    padding: 4px 8px;
+    border-radius: 4px;
     font-weight: bold;
+    animation: pulse 2s infinite;
 }
-.yellow-signal {
-    background-color: #ffc107;
-    color: black;
-    padding: 10px;
-    border-radius: 5px;
-    text-align: center;
-    font-weight: bold;
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
 }
-.red-signal {
-    background-color: #dc3545;
-    color: white;
-    padding: 10px;
-    border-radius: 5px;
-    text-align: center;
-    font-weight: bold;
-}
+
 .match-card {
     border: 1px solid #ddd;
     border-radius: 8px;
@@ -54,250 +39,152 @@ st.markdown("""
     margin: 10px 0;
     background-color: #f8f9fa;
 }
+
+.score-large {
+    font-size: 2em;
+    font-weight: bold;
+    color: #333;
+}
+
+.red-card {
+    color: #ff0000;
+    font-weight: bold;
+}
 </style>
 """, unsafe_allow_html=True)
 
-# Título principal
-st.title("⚽ Football Betting Predictor - Live Dashboard")
-st.markdown("**Predicciones en tiempo real con actualización automática cada 15 minutos**")
+# Título
+st.title("⚽ Football Live Tracker")
+st.markdown(f"**Actualización automática cada {config.REFRESH_INTERVAL // 60} minutos**")
 
-# Sidebar - Configuración
+# Sidebar
 with st.sidebar:
     st.header("⚙️ Configuración")
     
-    # Modo de operación
-    use_mock = st.checkbox("Usar datos de prueba (Mock)", value=True, 
-                           help="Activar para testing sin API real")
+    st.subheader("📅 Fecha")
+    selected_date = st.date_input("Seleccionar fecha", datetime.now())
+    date_str = selected_date.strftime('%d/%m/%Y')
     
-    # Ligas a monitorear
-    st.subheader("🏆 Ligas")
-    leagues_options = {
-        'UEFA Champions League': '228',
-        'Premier League': '10932509',
-        'La Liga': '117',
-        'Bundesliga': '59',
-        'Serie A': '81',
-        'Ligue 1': '55'
-    }
+    st.subheader("🔍 Filtros")
+    show_only_live = st.checkbox("Solo partidos en vivo", value=True)
     
-    selected_leagues = st.multiselect(
-        "Seleccionar ligas:",
-        options=list(leagues_options.keys()),
-        default=['UEFA Champions League', 'Premier League']
-    )
-    
-    competition_ids = [leagues_options[league] for league in selected_leagues]
-    
-    # Filtros de confianza
-    st.subheader("🎯 Filtros")
-    min_confidence = st.slider(
-        "Confianza mínima:",
-        min_value=0.0,
-        max_value=1.0,
-        value=config.MIN_CONFIDENCE,
-        step=0.05
-    )
-    
-    # Información
     st.divider()
-    st.caption(f"⏱️ Actualiza cada {config.REFRESH_INTERVAL // 60} minutos")
-    st.caption(f"📊 Última actualización: {datetime.now().strftime('%H:%M:%S')}")
+    st.caption(f"🕐 Última actualización: {datetime.now().strftime('%H:%M:%S')}")
 
 # Inicializar API
 @st.cache_resource
 def get_api_client():
-    if use_mock:
-        return MockBetfairAPI()
-    else:
-        api_key = config.FOOTBALL_API_KEY
-        if not api_key:
-            st.error("❌ API Key no configurada. Usa el modo Mock o configura FOOTBALL_API_KEY en .env")
-            return MockBetfairAPI()
-        return BetfairAPIConsumer(api_key)
+    api_key = config.FOOTBALL_API_KEY
+    if not api_key:
+        st.error("❌ API Key no configurada. Por favor configura FOOTBALL_API_KEY en tu archivo .env")
+        st.stop()
+    return FootballAPI7Consumer(api_key)
 
 api = get_api_client()
 
-# Función para obtener partidos en vivo
+# Obtener partidos
 @st.cache_data(ttl=config.REFRESH_INTERVAL)
-def fetch_live_matches(comp_ids):
-    """Obtener partidos en vivo de las competiciones seleccionadas"""
-    matches = []
-    
-    with st.spinner('🔄 Obteniendo partidos en vivo...'):
-        for comp_id in comp_ids:
-            try:
-                events = api.get_events(comp_id)
-                
-                for event in events:
-                    event_id = event['event_id']
-                    
-                    # Obtener predicción pre-match
-                    prematch = api.get_match_predictions(event_id)
-                    
-                    if prematch:
-                        # Por ahora simulamos estado in-play
-                        # En producción, aquí obtendrías minuto y marcador real
-                        import random
-                        is_live = random.choice([True, False])
-                        
-                        if is_live:
-                            minute = random.randint(10, 85)
-                            home_score = random.randint(0, 3)
-                            away_score = random.randint(0, 3)
-                            
-                            # Generar predicción in-play
-                            inplay = predictor.predict(
-                                prematch,
-                                minute,
-                                home_score,
-                                away_score
-                            )
-                            
-                            match = {
-                                'event_id': event_id,
-                                'home_team': event['home_team'],
-                                'away_team': event['away_team'],
-                                'competition': comp_id,
-                                'minute': minute,
-                                'score': f"{home_score}-{away_score}",
-                                'prematch': prematch,
-                                'inplay': inplay
-                            }
-                            matches.append(match)
-            except Exception as e:
-                st.warning(f"⚠️ Error obteniendo datos de competición {comp_id}: {str(e)}")
-                continue
-    
+def fetch_matches(date_str, only_live):
+    with st.spinner('🔄 Obteniendo partidos...'):
+        if only_live:
+            matches = api.get_live_matches(date_str)
+        else:
+            matches = api.get_matches_by_date(date_str)
     return matches
 
-# Obtener datos
-if not competition_ids:
-    st.warning("⚠️ Selecciona al menos una liga en el sidebar")
-    st.stop()
-
-matches = fetch_live_matches(competition_ids)
-
-# Filtrar por confianza
-matches_filtered = [
-    m for m in matches 
-    if m['inplay']['confidence'] >= min_confidence
-]
+matches = fetch_matches(date_str, show_only_live)
 
 # Métricas generales
 col1, col2, col3, col4 = st.columns(4)
 
+total_matches = len(matches)
+live_matches = len([m for m in matches if m['status']['is_live']])
+total_goals = sum(m['home_team']['score'] + m['away_team']['score'] for m in matches)
+red_cards = sum(m['home_team']['red_cards'] + m['away_team']['red_cards'] for m in matches)
+
 with col1:
-    st.metric("📡 Partidos en Vivo", len(matches))
+    st.metric("📊 Total Partidos", total_matches)
 
 with col2:
-    high_conf = len([m for m in matches if m['inplay']['signal_color'] == 'green'])
-    st.metric("🟢 Alta Confianza", high_conf)
+    st.metric("🔴 En Vivo", live_matches)
 
 with col3:
-    med_conf = len([m for m in matches if m['inplay']['signal_color'] == 'yellow'])
-    st.metric("🟡 Media Confianza", med_conf)
+    st.metric("⚽ Goles", total_goals)
 
 with col4:
-    low_conf = len([m for m in matches if m['inplay']['signal_color'] == 'red'])
-    st.metric("🔴 Baja Confianza", low_conf)
+    st.metric("🟥 Tarjetas Rojas", red_cards)
 
 st.divider()
 
 # Mostrar partidos
-if not matches_filtered:
-    st.info("🔍 No hay partidos que cumplan los criterios de filtrado")
+if not matches:
+    st.info("ℹ️ No hay partidos disponibles para los filtros seleccionados")
 else:
-    st.subheader(f"🎮 Partidos en Vivo ({len(matches_filtered)})")
+    # Agrupar por competición
+    competitions = {}
+    for match in matches:
+        comp_name = match['competition']['name']
+        if comp_name not in competitions:
+            competitions[comp_name] = []
+        competitions[comp_name].append(match)
     
-    for match in matches_filtered:
-        with st.container():
-            # Semáforo
-            signal_color = match['inplay']['signal_color']
-            signal_emoji = {
-                'green': '🟢',
-                'yellow': '🟡',
-                'red': '🔴'
-            }[signal_color]
-            
-            # Header del partido
-            col_header1, col_header2, col_header3 = st.columns([3, 1, 1])
-            
-            with col_header1:
-                st.markdown(f"### {match['home_team']} vs {match['away_team']}")
-            
-            with col_header2:
-                st.markdown(f"**{match['score']}** | {match['minute']}'")
-            
-            with col_header3:
-                st.markdown(f"{signal_emoji} **Confianza: {match['inplay']['confidence']:.0%}**")
-            
-            # Contenido del partido
-            col1, col2, col3 = st.columns([1, 1, 1])
-            
-            with col1:
-                st.markdown("**📄 Pre-Match**")
-                st.write(f"Casa: {match['prematch']['prob_home']:.1%}")
-                st.write(f"Empate: {match['prematch']['prob_draw']:.1%}")
-                st.write(f"Visita: {match['prematch']['prob_away']:.1%}")
-            
-            with col2:
-                st.markdown("**⏱️ In-Play (Actualizado)**")
-                st.write(f"Casa: {match['inplay']['prob_home']:.1%}")
-                st.write(f"Empate: {match['inplay']['prob_draw']:.1%}")
-                st.write(f"Visita: {match['inplay']['prob_away']:.1%}")
-            
-            with col3:
-                st.markdown("**📊 Cambios**")
-                delta_home = match['inplay']['prob_home'] - match['prematch']['prob_home']
-                delta_draw = match['inplay']['prob_draw'] - match['prematch']['prob_draw']
-                delta_away = match['inplay']['prob_away'] - match['prematch']['prob_away']
+    # Mostrar por competición
+    for comp_name, comp_matches in competitions.items():
+        st.subheader(f"🏆 {comp_name}")
+        
+        for match in comp_matches:
+            with st.container():
+                # Header del partido
+                col_live, col_teams, col_score, col_time = st.columns([1, 4, 2, 1])
                 
-                st.write(f"Casa: {delta_home:+.1%}")
-                st.write(f"Empate: {delta_draw:+.1%}")
-                st.write(f"Visita: {delta_away:+.1%}")
-            
-            # Gráfico de probabilidades
-            fig = go.Figure()
-            
-            categories = ['Pre-Match', 'In-Play']
-            
-            fig.add_trace(go.Bar(
-                name='Casa',
-                x=categories,
-                y=[match['prematch']['prob_home'], match['inplay']['prob_home']],
-                marker_color='#1f77b4'
-            ))
-            
-            fig.add_trace(go.Bar(
-                name='Empate',
-                x=categories,
-                y=[match['prematch']['prob_draw'], match['inplay']['prob_draw']],
-                marker_color='#ff7f0e'
-            ))
-            
-            fig.add_trace(go.Bar(
-                name='Visita',
-                x=categories,
-                y=[match['prematch']['prob_away'], match['inplay']['prob_away']],
-                marker_color='#d62728'
-            ))
-            
-            fig.update_layout(
-                barmode='group',
-                height=250,
-                margin=dict(l=0, r=0, t=20, b=0),
-                yaxis_title="Probabilidad",
-                yaxis_tickformat='.0%'
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
-            
-            st.divider()
+                with col_live:
+                    if match['status']['is_live']:
+                        st.markdown('<span class="live-badge">🔴 LIVE</span>', unsafe_allow_html=True)
+                    else:
+                        st.write(match['status']['short_status'])
+                
+                with col_teams:
+                    st.write(f"**{match['home_team']['name']}**")
+                    st.write(f"**{match['away_team']['name']}**")
+                
+                with col_score:
+                    home_score = match['home_team']['score']
+                    away_score = match['away_team']['score']
+                    st.markdown(f'<p class="score-large">{home_score} - {away_score}</p>', unsafe_allow_html=True)
+                
+                with col_time:
+                    if match['status']['is_live']:
+                        st.write(f"⏱️ {match['status']['game_time_display']}")
+                    else:
+                        # Mostrar hora de inicio
+                        try:
+                            start_time = datetime.fromisoformat(match['start_time'].replace('Z', '+00:00'))
+                            st.write(start_time.strftime('%H:%M'))
+                        except:
+                            st.write("-")
+                
+                # Información adicional
+                col_info1, col_info2, col_info3 = st.columns(3)
+                
+                with col_info1:
+                    if match['home_team']['red_cards'] > 0:
+                        st.markdown(f'<span class="red-card">🟥 {match["home_team"]["name"]}: {match["home_team"]["red_cards"]}</span>', unsafe_allow_html=True)
+                    if match['away_team']['red_cards'] > 0:
+                        st.markdown(f'<span class="red-card">🟥 {match["away_team"]["name"]}: {match["away_team"]["red_cards"]}</span>', unsafe_allow_html=True)
+                
+                with col_info2:
+                    if match['round_name']:
+                        st.caption(f"📅 {match['round_name']}")
+                
+                with col_info3:
+                    if match['has_video']:
+                        st.caption("📹 Video disponible")
+                
+                st.divider()
 
 # Auto-refresh
 st.markdown("---")
-st.caption("🔄 El dashboard se actualiza automáticamente cada 15 minutos")
+st.caption("🔄 El dashboard se actualiza automáticamente")
 
-# Programar auto-refresh (rerun after interval)
 time.sleep(config.REFRESH_INTERVAL)
 st.rerun()
