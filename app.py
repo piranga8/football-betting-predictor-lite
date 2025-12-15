@@ -1,4 +1,4 @@
-"""Dashboard de partidos en vivo"""
+"""Dashboard de partidos en vivo con predicciones"""
 import streamlit as st
 import pandas as pd
 from datetime import datetime
@@ -6,6 +6,8 @@ import time
 
 from config import config
 from src.data.api_consumer import FootballAPI7Consumer
+from src.data.primatips_scraper import PrimaTipsScraper
+from src.utils.match_matcher import enrich_matches_with_predictions
 
 # Configuración de la página
 st.set_page_config(
@@ -32,12 +34,40 @@ st.markdown("""
     50% { opacity: 0.6; }
 }
 
-.match-card {
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    padding: 15px;
-    margin: 10px 0;
-    background-color: #f8f9fa;
+.prediction-badge {
+    background-color: #4CAF50;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-weight: bold;
+    font-size: 0.9em;
+}
+
+.odds-box {
+    background-color: #f0f0f0;
+    padding: 8px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    margin-top: 5px;
+}
+
+.probability-bar {
+    height: 20px;
+    background-color: #e0e0e0;
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 5px 0;
+}
+
+.probability-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #4CAF50, #8BC34A);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 0.75em;
+    font-weight: bold;
 }
 
 .score-large {
@@ -54,7 +84,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Título
-st.title("⚽ Football Live Tracker")
+st.title("⚽ Football Live Tracker + Predictions")
 st.markdown(f"**Actualización automática cada {config.REFRESH_INTERVAL // 60} minutos**")
 
 # Sidebar
@@ -67,40 +97,67 @@ with st.sidebar:
     
     st.subheader("🔍 Filtros")
     show_only_live = st.checkbox("Solo partidos en vivo", value=True)
+    show_predictions = st.checkbox("Mostrar predicciones", value=True)
+    
+    st.divider()
+    
+    st.subheader("🎯 Fuentes de Datos")
+    st.caption("⚽ Partidos: Football API 7")
+    st.caption("📊 Predicciones: PrimaTips")
     
     st.divider()
     st.caption(f"🕐 Última actualización: {datetime.now().strftime('%H:%M:%S')}")
 
-# Inicializar API
+# Inicializar APIs
 @st.cache_resource
-def get_api_client():
+def get_api_clients():
     api_key = config.FOOTBALL_API_KEY
     if not api_key:
         st.error("❌ API Key no configurada. Por favor configura FOOTBALL_API_KEY en tu archivo .env")
         st.stop()
-    return FootballAPI7Consumer(api_key)
+    
+    football_api = FootballAPI7Consumer(api_key)
+    primatips = PrimaTipsScraper()
+    
+    return football_api, primatips
 
-api = get_api_client()
+football_api, primatips = get_api_clients()
 
-# Obtener partidos
+# Obtener datos
 @st.cache_data(ttl=config.REFRESH_INTERVAL)
-def fetch_matches(date_str, only_live):
+def fetch_data(date_str, only_live, include_predictions):
     with st.spinner('🔄 Obteniendo partidos...'):
         if only_live:
-            matches = api.get_live_matches(date_str)
+            matches = football_api.get_live_matches(date_str)
         else:
-            matches = api.get_matches_by_date(date_str)
+            matches = football_api.get_matches_by_date(date_str)
+    
+    if include_predictions:
+        with st.spinner('🎯 Obteniendo predicciones...'):
+            # Convertir fecha a formato YYYY-MM-DD para PrimaTips
+            date_parts = date_str.split('/')
+            primatips_date = f"{date_parts[2]}-{date_parts[1]}-{date_parts[0]}"
+            predictions = primatips.get_predictions_by_date(primatips_date)
+            
+            # Enriquecer partidos con predicciones
+            matches = enrich_matches_with_predictions(matches, predictions)
+    else:
+        # Sin predicciones
+        for match in matches:
+            match['prediction'] = None
+    
     return matches
 
-matches = fetch_matches(date_str, show_only_live)
+matches = fetch_data(date_str, show_only_live, show_predictions)
 
 # Métricas generales
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4, col5 = st.columns(5)
 
 total_matches = len(matches)
 live_matches = len([m for m in matches if m['status']['is_live']])
 total_goals = sum(m['home_team']['score'] + m['away_team']['score'] for m in matches)
 red_cards = sum(m['home_team']['red_cards'] + m['away_team']['red_cards'] for m in matches)
+with_predictions = len([m for m in matches if m.get('prediction')])
 
 with col1:
     st.metric("📊 Total Partidos", total_matches)
@@ -113,6 +170,9 @@ with col3:
 
 with col4:
     st.metric("🟥 Tarjetas Rojas", red_cards)
+
+with col5:
+    st.metric("🎯 Con Predicción", with_predictions)
 
 st.divider()
 
@@ -156,14 +216,59 @@ else:
                     if match['status']['is_live']:
                         st.write(f"⏱️ {match['status']['game_time_display']}")
                     else:
-                        # Mostrar hora de inicio
                         try:
                             start_time = datetime.fromisoformat(match['start_time'].replace('Z', '+00:00'))
                             st.write(start_time.strftime('%H:%M'))
                         except:
                             st.write("-")
                 
-                # Información adicional
+                # Información adicional y predicciones
+                if match.get('prediction') and show_predictions:
+                    st.markdown("---")
+                    
+                    pred = match['prediction']
+                    
+                    col_pred, col_odds, col_probs = st.columns([2, 3, 3])
+                    
+                    with col_pred:
+                        st.markdown(f'<span class="prediction-badge">🎯 Predicción: {pred["predicted_name"]}</span>', unsafe_allow_html=True)
+                        st.caption(f"[Ver en PrimaTips]({pred['link']})")
+                    
+                    with col_odds:
+                        if pred['odds']:
+                            odds_text = f"**Cuotas:** 1: {pred['odds']['home'] or '-'} | X: {pred['odds']['draw'] or '-'} | 2: {pred['odds']['away'] or '-'}"
+                            st.markdown(f'<div class="odds-box">{odds_text}</div>', unsafe_allow_html=True)
+                    
+                    with col_probs:
+                        if pred['probabilities']:
+                            probs = pred['probabilities']
+                            
+                            # Barra de probabilidad para la predicción favorita
+                            if pred['predicted'] == '1':
+                                prob_value = probs['home']
+                                prob_label = f"Local: {prob_value*100:.1f}%"
+                            elif pred['predicted'] == 'X':
+                                prob_value = probs['draw']
+                                prob_label = f"Empate: {prob_value*100:.1f}%"
+                            elif pred['predicted'] == '2':
+                                prob_value = probs['away']
+                                prob_label = f"Visitante: {prob_value*100:.1f}%"
+                            else:
+                                prob_value = max(probs['home'], probs['draw'], probs['away'])
+                                prob_label = f"Máxima: {prob_value*100:.1f}%"
+                            
+                            prob_percent = prob_value * 100
+                            st.markdown(f'''
+                            <div class="probability-bar">
+                                <div class="probability-fill" style="width: {prob_percent}%">
+                                    {prob_label}
+                                </div>
+                            </div>
+                            ''', unsafe_allow_html=True)
+                            
+                            st.caption(f"Local: {probs['home']*100:.0f}% | Empate: {probs['draw']*100:.0f}% | Visitante: {probs['away']*100:.0f}%")
+                
+                # Tarjetas rojas y otras info
                 col_info1, col_info2, col_info3 = st.columns(3)
                 
                 with col_info1:
