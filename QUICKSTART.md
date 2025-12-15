@@ -1,232 +1,177 @@
-# 🚀 Guía Rápida - MVP
+# 🚀 Guía de Inicio Rápido - 5 Minutos
 
-## Inicio Rápido (5 minutos)
+## 🎯 Objetivo
 
-### Opción 1: Ejecutar con Scripts Automáticos
+Tener el **Football Live Tracker** funcionando en tu máquina en menos de 5 minutos.
 
-**Windows:**
-```cmd
-run_mvp.bat
+---
+
+## ✅ Requisitos
+
+- Python 3.9 o superior
+- Cuenta en [RapidAPI](https://rapidapi.com) (gratis)
+- 5 minutos de tu tiempo
+
+---
+
+## 👣 Pasos
+
+### 1️⃣ Clonar el Repositorio (30 segundos)
+
+```bash
+git clone https://github.com/piranga8/football-betting-predictor-lite.git
+cd football-betting-predictor-lite
 ```
+
+### 2️⃣ Crear Entorno Virtual (1 minuto)
 
 **Linux/Mac:**
 ```bash
-chmod +x run_mvp.sh
-./run_mvp.sh
+python3 -m venv venv
+source venv/bin/activate
 ```
 
-El script hará automáticamente:
-1. ✅ Crear entorno virtual
-2. ✅ Instalar dependencias
-3. ✅ Crear archivo .env
-4. ✅ Iniciar dashboard
+**Windows:**
+```bash
+python -m venv venv
+venv\Scripts\activate
+```
 
-### Opción 2: Manual
+### 3️⃣ Instalar Dependencias (2 minutos)
 
 ```bash
-# 1. Crear entorno virtual
-python -m venv venv
-
-# 2. Activar
-source venv/bin/activate  # Linux/Mac
-venv\Scripts\activate     # Windows
-
-# 3. Actualizar herramientas
-python -m pip install --upgrade pip setuptools wheel
-
-# 4. Instalar dependencias
 pip install -r requirements.txt
+```
 
-# 5. Configurar .env
+### 4️⃣ Configurar API Key (1 minuto)
+
+**Obtener la API Key:**
+
+1. Ir a [Football API 7 en RapidAPI](https://rapidapi.com/codechno/api/football-api-7)
+2. Click en **Subscribe to Test**
+3. Elegir el plan **Basic (Free)** - 100 requests/día gratis
+4. Copiar tu **X-RapidAPI-Key**
+
+**Configurar el archivo .env:**
+
+```bash
 cp .env.example .env
-# Editar .env con tu API key
+```
 
-# 6. Ejecutar
+Editar `.env` con tu editor favorito:
+
+```env
+FOOTBALL_API_KEY=pega_tu_key_aqui
+```
+
+### 5️⃣ Ejecutar el Dashboard (30 segundos)
+
+```bash
 streamlit run app.py
 ```
 
----
-
-## 🎯 Modo Testing (Sin API Key)
-
-1. Ejecutar el dashboard
-2. En el **sidebar**, activar: ✅ **"Usar datos de prueba (Mock)"**
-3. Listo! Verás partidos de ejemplo
-
-Esto te permite probar el sistema sin gastar cuota de API.
+🎉 **¡Listo!** El dashboard se abrirá automáticamente en `http://localhost:8501`
 
 ---
 
-## 🔑 Obtener API Key (RapidAPI)
+## 👀 Qué Verás
 
-1. Ir a [RapidAPI](https://rapidapi.com)
-2. Registrarse / Iniciar sesión
-3. Buscar: **"Betfair Sports Data Fast and Reliable"**
-4. Suscribirse al plan (hay plan gratuito)
-5. Copiar tu **X-RapidAPI-Key**
-6. Pegar en `.env`:
+### Dashboard Principal
 
-```env
-FOOTBALL_API_KEY=tu_key_aqui
+```
+⚽ Football Live Tracker
+___________________________________________
+
+📊 Total Partidos: 15
+🔴 En Vivo: 3
+⚽ Goles: 12
+🟥 Tarjetas Rojas: 1
+
+🏆 Premier League
+  🔴 LIVE   Manchester United  2 - 1  Bournemouth  ⏱️ 67'
+  Sched.    Arsenal vs Chelsea               20:00
+
+🏆 La Liga
+  🔴 LIVE   Barcelona  2 - 2  Real Madrid  ⏱️ 82'
+  🟥 Real Madrid: 1
 ```
 
----
+### Sidebar (Izquierda)
 
-## 📺 Cómo Usar el Dashboard
-
-### Sidebar (Configuración)
-
-1. **Modo Mock**: Testing sin API
-2. **Ligas**: Seleccionar qué ligas monitorear
-   - Champions League
-   - Premier League
-   - La Liga
-   - Bundesliga
-   - Serie A
-   - Ligue 1
-3. **Confianza Mínima**: Filtrar predicciones (0.0 a 1.0)
-
-### Vista Principal
-
-**Métricas Generales:**
-- 📡 Partidos en Vivo
-- 🟢 Alta Confianza (verde)
-- 🟡 Media Confianza (amarillo)
-- 🔴 Baja Confianza (rojo)
-
-**Por Cada Partido:**
-- **Equipos y Marcador**
-- **Minuto actual**
-- **Semáforo de confianza**
-- **Probabilidades Pre-Match** (desde API externa)
-- **Probabilidades In-Play** (calculadas por nuestro modelo)
-- **Cambios** (diferencias entre pre-match e in-play)
-- **Gráfico comparativo**
+- **📅 Fecha**: Selector de fecha
+- **🔍 Filtros**: 
+  - ☑️ Solo partidos en vivo
 
 ---
 
-## 💡 Tips
-
-### ¿Cómo Interpretar el Semáforo?
-
-- **🟢 Verde**: Alta confianza (>75%) + resultado claro
-  - ✅ Buena señal para considerar apuesta
-- **🟡 Amarillo**: Confianza media (55-75%)
-  - ⚠️ Evaluar con cuidado
-- **🔴 Rojo**: Baja confianza (<55%)
-  - ❌ Evitar apostar
-
-### ¿Qué Son las Probabilidades?
-
-**Pre-Match (Externas):**
-- Calculadas desde las **cuotas de Betfair** antes del partido
-- Representan el consenso del mercado
-
-**In-Play (Nuestro Modelo):**
-- Actualizadas durante el partido usando:
-  - Marcador actual
-  - Minuto del partido
-  - Modelo Poisson ajustado
-- Reflejan cómo el marcador cambia las probabilidades
-
-### Ejemplo Práctico
-
-**Pre-Match:**
-- Casa: 55%
-- Empate: 28%
-- Visita: 17%
-
-**Marcador en minuto 30: 1-0 (casa gana)**
-
-**In-Play actualizado:**
-- Casa: 72% (↑ +17%)
-- Empate: 18% (↓ -10%)
-- Visita: 10% (↓ -7%)
-
-➡️ El marcador favorable aumenta las probabilidades del local.
-
----
-
-## ⚙️ Configuración Avanzada
+## ⚙️ Configuración Opcional
 
 ### Cambiar Intervalo de Actualización
 
 En `.env`:
+
 ```env
-REFRESH_INTERVAL=600  # 10 minutos
+REFRESH_INTERVAL=300  # 5 minutos (default)
+REFRESH_INTERVAL=600  # 10 minutos (ahorra requests)
+REFRESH_INTERVAL=180  # 3 minutos (más frecuente)
 ```
 
-### Filtro de Confianza Global
+### Cambiar Zona Horaria
 
-En `.env`:
 ```env
-MIN_CONFIDENCE=0.70  # Solo >70%
+DEFAULT_TIMEZONE=america/santiago  # Chile
+DEFAULT_TIMEZONE=america/mexico_city  # México
+DEFAULT_TIMEZONE=europe/madrid  # España
 ```
 
 ---
 
-## ❓ Preguntas Frecuentes
-
-### ¿Puedo usar sin API key?
-
-Sí, activa el **modo Mock** en el sidebar. Verás datos de ejemplo.
-
-### ¿Cuánto cuesta la API?
-
-[Betfair Sports Data API](https://rapidapi.com/msilvabr18/api/betfair-sports-data-fast-and-reliable) tiene:
-- Plan **gratuito**: 100 requests/mes
-- Plan **básico**: $10/mes (1000 requests)
-
-### ¿Cuántas requests consume el MVP?
-
-Por cada actualización (cada 15 min):
-- 1 request por liga (getEvents)
-- 1 request por partido (getMarketsList)
-- 1 request por mercado (GetMarketOdds)
-
-**Ejemplo:** 2 ligas con 5 partidos cada una:
-- 2 + (10 × 2) = **22 requests cada 15 min**
-- En 1 hora: 88 requests
-
-➡️ **Recomendación**: Seleccionar 1-2 ligas principales para no exceder cuota.
-
-### ¿Cómo actualizo el sistema?
-
-```bash
-git pull origin main
-pip install -r requirements.txt --upgrade
-```
-
----
-
-## 🐛 Problemas Comunes
-
-### Error: "ModuleNotFoundError"
-
-```bash
-pip install -r requirements.txt
-```
+## 🐛 ¿Problemas?
 
 ### Error: "API Key no configurada"
 
-1. Verificar `.env` existe
-2. Verificar `FOOTBALL_API_KEY` tiene valor
-3. Reiniciar dashboard
-
-### Dashboard se congela
-
-Presiona `Ctrl + C` en la terminal y reinicia:
 ```bash
-streamlit run app.py
+# Verificar que .env existe y tiene contenido
+cat .env
+
+# Debe mostrar:
+FOOTBALL_API_KEY=tu_key_aqui
 ```
 
+### Error 403: "You are not subscribed"
+
+1. Verifica que te suscribiste a **Football API 7** (no otra API de fútbol)
+2. Confirma que copiaste la key correcta
+3. Revisa en RapidAPI Dashboard que la suscripción esté activa
+
+### No se muestran partidos
+
+- 🕒 Puede que no haya partidos en vivo ahora
+- ☑️ Desactiva "Solo partidos en vivo" para ver todos los del día
+- 📅 Cambia la fecha a un día con más actividad (sábado/domingo)
+
+### Más ayuda
+
+Ver [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+
 ---
 
-## 📞 Soporte
+## 📚 Siguiente Paso
 
-- **Issues**: [GitHub Issues](https://github.com/piranga8/football-betting-predictor-lite/issues)
-- **Documentación completa**: Ver [README.md](README.md)
+Ahora que funciona, explora:
+
+- [docs/CONFIGURATION.md](docs/CONFIGURATION.md) - Todas las variables de configuración
+- [ARCHITECTURE.md](ARCHITECTURE.md) - Cómo funciona por dentro
+- [README.md](README.md) - Documentación completa
 
 ---
 
-¡**Listo para empezar!** 🎉
+## 🎉 ¡Felicidades!
+
+Ya tienes tu tracker de partidos en vivo funcionando. Disfruta viendo fútbol con datos en tiempo real.
+
+---
+
+**⏱️ Tiempo total:** ~5 minutos
+
+**💰 Costo:** $0 (plan gratuito de RapidAPI)
